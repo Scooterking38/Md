@@ -1,0 +1,63 @@
+name: Recon Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Target domain to scan'
+        required: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      DOMAIN: ${{ github.event.inputs.domain }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install ParamSpider
+        run: |
+          git clone https://github.com/devanshbatham/ParamSpider paramspider
+          cd paramspider
+          pip install .
+
+      - name: Run ParamSpider
+        run: |
+          cd paramspider
+          paramspider -d $DOMAIN     # → creates results/$DOMAIN.txt
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Install Nuclei
+        run: |
+          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+      - name: Update Nuclei Templates
+        run: |
+          nuclei -update-templates
+
+      - name: Run Nuclei Scan
+        run: |
+          nuclei -l paramspider/results/$DOMAIN.txt -o nuclei_results.txt
+
+      - name: Upload ParamSpider Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: paramspider-urls
+          path: paramspider/results/$DOMAIN.txt
+
+      - name: Upload Nuclei Findings
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuclei-findings
+          path: nuclei_results.txt
