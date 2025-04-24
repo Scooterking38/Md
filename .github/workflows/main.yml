@@ -51,7 +51,7 @@ jobs:
         run: |
           ~/tools/nuclei -l paramspider/results/${{ env.DOMAIN }}.txt \
                          -o nuclei_results.txt \
-                         -stats -stats-interval 10s \
+                         -stats \
                          -ni
 
       # --- Artifacts ---
