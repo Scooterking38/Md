@@ -18,7 +18,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # --- Python/ParamSpider ---
+      # --- Python / ParamSpider ---
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -35,7 +35,7 @@ jobs:
           cd paramspider
           paramspider -d $DOMAIN
 
-      # --- Go/Nuclei ---
+      # --- Go / Nuclei ---
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
@@ -58,8 +58,8 @@ jobs:
           cd ~/tools
           if [ ! -f nuclei ]; then
             git clone https://github.com/projectdiscovery/nuclei.git
-            cd nuclei/v3/cmd/nuclei
-            go build -o ~/tools/nuclei .
+            cd nuclei/v3
+            go build -o ~/tools/nuclei ./cmd/nuclei
           fi
 
       - name: Update Nuclei templates
@@ -78,7 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: paramspider-output
-          path: paramspider/results/$DOMAIN.txt
+          path: paramspider/results/${{ env.DOMAIN }}.txt
 
       - name: Upload Nuclei scan results
         uses: actions/upload-artifact@v4
