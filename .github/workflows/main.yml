@@ -35,32 +35,13 @@ jobs:
           cd paramspider
           paramspider -d $DOMAIN
 
-      # --- Go / Nuclei ---
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.22'
-          cache: true
-
-      - name: Cache Go build artifacts
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-
-
-      - name: Install Nuclei from source with caching
+      # --- Nuclei (Prebuilt Binary) ---
+      - name: Download Nuclei prebuilt binary
         run: |
           mkdir -p ~/tools
-          cd ~/tools
-          if [ ! -f nuclei ]; then
-            git clone https://github.com/projectdiscovery/nuclei.git
-            cd nuclei/v3
-            go build -o ~/tools/nuclei ./cmd/nuclei
-          fi
+          curl -L https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_3.4.2_linux_amd64.zip -o nuclei.zip
+          unzip nuclei.zip -d ~/tools
+          chmod +x ~/tools/nuclei
 
       - name: Update Nuclei templates
         run: |
@@ -68,7 +49,7 @@ jobs:
 
       - name: Run Nuclei scan
         run: |
-          ~/tools/nuclei -l paramspider/results/$DOMAIN.txt \
+          ~/tools/nuclei -l paramspider/results/${{ env.DOMAIN }}.txt \
                          -o nuclei_results.txt \
                          -stats -stats-interval 10s \
                          -ni
