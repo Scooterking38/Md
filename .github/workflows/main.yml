@@ -1,4 +1,4 @@
-name: Run ReconFTW
+name: Run ReconFTW (cached)
 
 on:
   workflow_dispatch:
@@ -19,7 +19,18 @@ jobs:
       - name: Install Golang
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'  # Latest stable Go
+          go-version: '1.21'
+
+      - name: Cache ReconFTW Tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go
+            ~/tools
+            ~/.local/bin
+          key: ${{ runner.os }}-reconftw-${{ hashFiles('reconftw/install.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-reconftw-
 
       - name: Install Dependencies
         run: sudo apt-get update && sudo apt-get install -y git curl unzip jq
@@ -29,6 +40,10 @@ jobs:
           git clone https://github.com/six2dez/reconftw.git
           cd reconftw
           chmod +x install.sh reconftw.sh
+
+      - name: Install ReconFTW Tools (if not cached)
+        run: |
+          cd reconftw
           ./install.sh
 
       - name: Run ReconFTW
