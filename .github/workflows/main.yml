@@ -9,7 +9,7 @@ env:
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 300  # 5 hours, under cap
+    timeout-minutes: 300
 
     steps:
       - name: Checkout Repo
@@ -18,7 +18,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt update || echo "apt update failed"
-          sudo apt install -y python3-pip git wget || echo "apt install failed"
+          sudo apt install -y python3-pip git wget python3-venv || echo "apt install failed"
           pip3 install pipx || echo "pipx install failed"
           pipx ensurepath || echo "pipx ensurepath failed"
 
@@ -30,7 +30,6 @@ jobs:
           go install github.com/lc/gau/v2/cmd/gau@latest || echo "gau install failed"
 
           echo "$HOME/go/bin" >> $GITHUB_PATH
-          export PATH=$PATH:$HOME/go/bin
 
           git clone https://github.com/FortyNorthSecurity/EyeWitness.git || echo "EyeWitness clone failed"
           cd EyeWitness
@@ -46,7 +45,9 @@ jobs:
       - name: Subdomain Enumeration (BBOT)
         continue-on-error: true
         run: |
-          bbot -t $TARGET_DOMAIN -o subdomains.txt || echo "BBOT failed"
+          mkdir bbot_output
+          bbot -t $TARGET_DOMAIN -o bbot_output || echo "BBOT failed"
+          cp bbot_output/*/output.txt subdomains.txt || echo "Copying BBOT output failed"
 
       - name: Check Alive Subdomains (HTTPX)
         continue-on-error: true
@@ -61,6 +62,7 @@ jobs:
       - name: Screenshot Alive Subdomains (EyeWitness)
         continue-on-error: true
         run: |
+          mkdir -p screenshots
           cd EyeWitness
           python3 EyeWitness.py --web -f ../alive_subdomains.txt --threads 5 -d ../screenshots/ || echo "EyeWitness failed"
           cd ..
