@@ -29,17 +29,20 @@ jobs:
           go install github.com/tomnomnom/waybackurls@latest || echo "waybackurls install failed"
           go install github.com/lc/gau/v2/cmd/gau@latest || echo "gau install failed"
 
-          echo "$HOME/go/bin" >> $GITHUB_PATH
+          # Add Go binaries to PATH for all later steps
+          echo "$HOME/go/bin" >> $GITHUB_PATH   # adds to PATH :contentReference[oaicite:5]{index=5}
 
+          # EyeWitness (must run its setup from Python/setup)
           git clone https://github.com/FortyNorthSecurity/EyeWitness.git || echo "EyeWitness clone failed"
-          cd EyeWitness
+          cd EyeWitness/Python/setup || echo "Missing setup dir"
           chmod +x setup.sh || echo "chmod failed"
           sudo ./setup.sh || echo "EyeWitness setup failed"
-          cd ..
+          cd ../../..
 
+          # ParamSpider (install requirements in its own dir)
           git clone https://github.com/devanshbatham/ParamSpider.git || echo "ParamSpider clone failed"
           cd ParamSpider
-          pip install -r requirements.txt || echo "ParamSpider requirements install failed"
+          pip3 install -r requirements.txt || echo "ParamSpider requirements install failed"
           cd ..
 
       - name: Subdomain Enumeration (BBOT)
@@ -47,6 +50,7 @@ jobs:
         run: |
           mkdir bbot_output
           bbot -t $TARGET_DOMAIN -o bbot_output || echo "BBOT failed"
+          # BBOT outputs a nested output.txt; copy it to subdomains.txt for downstream tools :contentReference[oaicite:6]{index=6}
           cp bbot_output/*/output.txt subdomains.txt || echo "Copying BBOT output failed"
 
       - name: Check Alive Subdomains (HTTPX)
@@ -63,9 +67,8 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p screenshots
-          cd EyeWitness
-          python3 EyeWitness.py --web -f ../alive_subdomains.txt --threads 5 -d ../screenshots/ || echo "EyeWitness failed"
-          cd ..
+          # EyeWitness .py is in the repo root after cloning; use the correct path
+          python3 EyeWitness/EyeWitness.py --web -f alive_subdomains.txt --threads 5 -d screenshots/ || echo "EyeWitness failed"
 
       - name: Subdomain Takeover Scan (Subzy)
         continue-on-error: true
@@ -75,6 +78,7 @@ jobs:
       - name: Parameter Discovery (ParamSpider)
         continue-on-error: true
         run: |
+          # ParamSpider’s script is paramspider.py in its own dir :contentReference[oaicite:7]{index=7}
           cd ParamSpider
           python3 paramspider.py -d $TARGET_DOMAIN > ../paramspider_results.txt || echo "ParamSpider failed"
           cd ..
