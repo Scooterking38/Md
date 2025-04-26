@@ -9,7 +9,8 @@ env:
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 300  # 5 hours to stay within the 6-hour limit
+    timeout-minutes: 300  # 5 hours, safe under 6h limit
+    continue-on-error: false
 
     steps:
       - name: Checkout Repository
@@ -17,54 +18,74 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo apt update
-          sudo apt install -y python3-pip git nmap perl wget
-          pip3 install pipx
-          pipx ensurepath
-          pipx install bbot
-          go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install github.com/projectdiscovery/katana/cmd/katana@latest
-          git clone https://github.com/FortyNorthSecurity/EyeWitness.git
-          cd EyeWitness/Python && sudo ./setup.sh
-          go install github.com/LukaSikic/subzy@latest
-          git clone https://github.com/devanshbatham/ParamSpider.git
-          cd ParamSpider && pip install -r requirements.txt
-          go install github.com/tomnomnom/waybackurls@latest
-          go install github.com/lc/gau/v2/cmd/gau@latest
+          set -e
+          sudo apt update || echo "apt update failed, continuing..."
+          sudo apt install -y python3-pip git nmap perl wget || echo "apt install failed, continuing..."
+          pip3 install pipx || echo "pipx install failed, continuing..."
+          pipx ensurepath || echo "pipx ensurepath failed, continuing..."
+
+          pipx install bbot || echo "bbot install failed, continuing..."
+          go install github.com/projectdiscovery/httpx/cmd/httpx@latest || echo "httpx install failed, continuing..."
+          go install github.com/projectdiscovery/katana/cmd/katana@latest || echo "katana install failed, continuing..."
+
+          git clone https://github.com/FortyNorthSecurity/EyeWitness.git || echo "EyeWitness clone failed, continuing..."
+          cd EyeWitness || exit 0
+          chmod +x setup.sh || echo "chmod on setup.sh failed, continuing..."
+          sudo ./setup.sh || echo "EyeWitness setup failed, continuing..."
+          cd ..
+
+          go install github.com/LukaSikic/subzy@latest || echo "subzy install failed, continuing..."
+
+          git clone https://github.com/devanshbatham/ParamSpider.git || echo "ParamSpider clone failed, continuing..."
+          cd ParamSpider || exit 0
+          pip install -r requirements.txt || echo "ParamSpider requirements install failed, continuing..."
+          cd ..
+
+          go install github.com/tomnomnom/waybackurls@latest || echo "waybackurls install failed, continuing..."
+          go install github.com/lc/gau/v2/cmd/gau@latest || echo "gau install failed, continuing..."
 
       - name: Subdomain Enumeration with BBOT
+        continue-on-error: true
         run: |
-          bbot -d $TARGET_DOMAIN -o subdomains.txt
+          bbot -d $TARGET_DOMAIN -o subdomains.txt || echo "BBOT failed!"
 
       - name: Check Alive Subdomains with HTTPX
+        continue-on-error: true
         run: |
-          cat subdomains.txt | httpx -silent -o alive_subdomains.txt
+          cat subdomains.txt | httpx -silent -o alive_subdomains.txt || echo "HTTPX failed!"
 
       - name: Crawl Alive Subdomains with Katana
+        continue-on-error: true
         run: |
-          katana -list alive_subdomains.txt -o endpoints.txt
+          katana -list alive_subdomains.txt -o endpoints.txt || echo "Katana failed!"
 
       - name: Capture Screenshots with EyeWitness
+        continue-on-error: true
         run: |
-          cd EyeWitness/Python
-          ./EyeWitness.py --web -f ../../alive_subdomains.txt --threads 5 -d ../../screenshots/
+          cd EyeWitness || exit 0
+          ./EyeWitness.py --web -f ../alive_subdomains.txt --threads 5 -d ../screenshots/ || echo "EyeWitness failed!"
+          cd ..
 
       - name: Detect Subdomain Takeovers with Subzy
+        continue-on-error: true
         run: |
-          subzy run --targets alive_subdomains.txt > subzy_results.txt
+          subzy run --targets alive_subdomains.txt > subzy_results.txt || echo "Subzy failed!"
 
       - name: Discover Parameters with ParamSpider
+        continue-on-error: true
         run: |
-          cd ParamSpider
-          python3 paramspider.py -d $TARGET_DOMAIN > ../paramspider_results.txt
+          cd ParamSpider || exit 0
+          python3 paramspider.py -d $TARGET_DOMAIN > ../paramspider_results.txt || echo "ParamSpider failed!"
+          cd ..
 
       - name: Gather URLs with WaybackURLs and GAU
+        continue-on-error: true
         run: |
-          cat alive_subdomains.txt | waybackurls > waybackurls.txt
-          cat alive_subdomains.txt | gau > gau.txt
-          sort -u waybackurls.txt gau.txt > urls.txt
+          cat alive_subdomains.txt | waybackurls > waybackurls.txt || echo "WaybackURLs failed!"
+          cat alive_subdomains.txt | gau > gau.txt || echo "GAU failed!"
+          sort -u waybackurls.txt gau.txt > urls.txt || echo "Sorting URLs failed!"
 
-      - name: Upload Reconnaissance Results
+      - name: Upload Recon Results
         uses: actions/upload-artifact@v4
         with:
           name: recon-results
