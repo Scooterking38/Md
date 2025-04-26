@@ -9,81 +9,80 @@ env:
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 300  # 5 hours, safe under 6h limit
-    continue-on-error: false
+    timeout-minutes: 300  # 5 hours, under cap
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Repo
         uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
-          set -e
-          sudo apt update || echo "apt update failed, continuing..."
-          sudo apt install -y python3-pip git nmap perl wget || echo "apt install failed, continuing..."
-          pip3 install pipx || echo "pipx install failed, continuing..."
-          pipx ensurepath || echo "pipx ensurepath failed, continuing..."
+          sudo apt update || echo "apt update failed"
+          sudo apt install -y python3-pip git wget || echo "apt install failed"
+          pip3 install pipx || echo "pipx install failed"
+          pipx ensurepath || echo "pipx ensurepath failed"
 
-          pipx install bbot || echo "bbot install failed, continuing..."
-          go install github.com/projectdiscovery/httpx/cmd/httpx@latest || echo "httpx install failed, continuing..."
-          go install github.com/projectdiscovery/katana/cmd/katana@latest || echo "katana install failed, continuing..."
+          pipx install bbot || echo "bbot install failed"
+          go install github.com/projectdiscovery/httpx/cmd/httpx@latest || echo "httpx install failed"
+          go install github.com/projectdiscovery/katana/cmd/katana@latest || echo "katana install failed"
+          go install github.com/LukaSikic/subzy@latest || echo "subzy install failed"
+          go install github.com/tomnomnom/waybackurls@latest || echo "waybackurls install failed"
+          go install github.com/lc/gau/v2/cmd/gau@latest || echo "gau install failed"
 
-          git clone https://github.com/FortyNorthSecurity/EyeWitness.git || echo "EyeWitness clone failed, continuing..."
-          cd EyeWitness || exit 0
-          chmod +x setup.sh || echo "chmod on setup.sh failed, continuing..."
-          sudo ./setup.sh || echo "EyeWitness setup failed, continuing..."
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+          export PATH=$PATH:$HOME/go/bin
+
+          git clone https://github.com/FortyNorthSecurity/EyeWitness.git || echo "EyeWitness clone failed"
+          cd EyeWitness
+          chmod +x setup.sh || echo "chmod failed"
+          sudo ./setup.sh || echo "EyeWitness setup failed"
           cd ..
 
-          go install github.com/LukaSikic/subzy@latest || echo "subzy install failed, continuing..."
-
-          git clone https://github.com/devanshbatham/ParamSpider.git || echo "ParamSpider clone failed, continuing..."
-          cd ParamSpider || exit 0
-          pip install -r requirements.txt || echo "ParamSpider requirements install failed, continuing..."
+          git clone https://github.com/devanshbatham/ParamSpider.git || echo "ParamSpider clone failed"
+          cd ParamSpider
+          pip install -r requirements.txt || echo "ParamSpider requirements install failed"
           cd ..
 
-          go install github.com/tomnomnom/waybackurls@latest || echo "waybackurls install failed, continuing..."
-          go install github.com/lc/gau/v2/cmd/gau@latest || echo "gau install failed, continuing..."
-
-      - name: Subdomain Enumeration with BBOT
+      - name: Subdomain Enumeration (BBOT)
         continue-on-error: true
         run: |
-          bbot -d $TARGET_DOMAIN -o subdomains.txt || echo "BBOT failed!"
+          bbot -t $TARGET_DOMAIN -o subdomains.txt || echo "BBOT failed"
 
-      - name: Check Alive Subdomains with HTTPX
+      - name: Check Alive Subdomains (HTTPX)
         continue-on-error: true
         run: |
-          cat subdomains.txt | httpx -silent -o alive_subdomains.txt || echo "HTTPX failed!"
+          cat subdomains.txt | httpx -silent -o alive_subdomains.txt || echo "HTTPX failed"
 
-      - name: Crawl Alive Subdomains with Katana
+      - name: Crawl Alive Subdomains (Katana)
         continue-on-error: true
         run: |
-          katana -list alive_subdomains.txt -o endpoints.txt || echo "Katana failed!"
+          katana -list alive_subdomains.txt -o endpoints.txt || echo "Katana failed"
 
-      - name: Capture Screenshots with EyeWitness
+      - name: Screenshot Alive Subdomains (EyeWitness)
         continue-on-error: true
         run: |
-          cd EyeWitness || exit 0
-          ./EyeWitness.py --web -f ../alive_subdomains.txt --threads 5 -d ../screenshots/ || echo "EyeWitness failed!"
+          cd EyeWitness
+          python3 EyeWitness.py --web -f ../alive_subdomains.txt --threads 5 -d ../screenshots/ || echo "EyeWitness failed"
           cd ..
 
-      - name: Detect Subdomain Takeovers with Subzy
+      - name: Subdomain Takeover Scan (Subzy)
         continue-on-error: true
         run: |
-          subzy run --targets alive_subdomains.txt > subzy_results.txt || echo "Subzy failed!"
+          subzy run --targets alive_subdomains.txt > subzy_results.txt || echo "Subzy failed"
 
-      - name: Discover Parameters with ParamSpider
+      - name: Parameter Discovery (ParamSpider)
         continue-on-error: true
         run: |
-          cd ParamSpider || exit 0
-          python3 paramspider.py -d $TARGET_DOMAIN > ../paramspider_results.txt || echo "ParamSpider failed!"
+          cd ParamSpider
+          python3 paramspider.py -d $TARGET_DOMAIN > ../paramspider_results.txt || echo "ParamSpider failed"
           cd ..
 
-      - name: Gather URLs with WaybackURLs and GAU
+      - name: Gather URLs (WaybackURLs + GAU)
         continue-on-error: true
         run: |
-          cat alive_subdomains.txt | waybackurls > waybackurls.txt || echo "WaybackURLs failed!"
-          cat alive_subdomains.txt | gau > gau.txt || echo "GAU failed!"
-          sort -u waybackurls.txt gau.txt > urls.txt || echo "Sorting URLs failed!"
+          cat alive_subdomains.txt | waybackurls > waybackurls.txt || echo "WaybackURLs failed"
+          cat alive_subdomains.txt | gau > gau.txt || echo "GAU failed"
+          sort -u waybackurls.txt gau.txt > urls.txt || echo "Sorting failed"
 
       - name: Upload Recon Results
         uses: actions/upload-artifact@v4
