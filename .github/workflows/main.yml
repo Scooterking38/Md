@@ -1,68 +1,78 @@
-name: Recon Scanner
+name: Deep Recon
 
 on:
   workflow_dispatch:
-    inputs:
-      domain:
-        description: 'Target domain to scan'
-        required: true
+
+env:
+  TARGET_DOMAIN: ${{ secrets.TARGET_DOMAIN }}
 
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
-    env:
-      DOMAIN: ${{ github.event.inputs.domain }}
+    timeout-minutes: 300  # 5 hours to stay within the 6-hour limit
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      # --- Python / ParamSpider ---
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
-
-      - name: Install ParamSpider
+      - name: Install Dependencies
         run: |
-          git clone https://github.com/devanshbatham/ParamSpider paramspider
-          cd paramspider
-          pip install .
+          sudo apt update
+          sudo apt install -y python3-pip git nmap perl wget
+          pip3 install pipx
+          pipx ensurepath
+          pipx install bbot
+          go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install github.com/projectdiscovery/katana/cmd/katana@latest
+          git clone https://github.com/FortyNorthSecurity/EyeWitness.git
+          cd EyeWitness/Python && sudo ./setup.sh
+          go install github.com/LukaSikic/subzy@latest
+          git clone https://github.com/devanshbatham/ParamSpider.git
+          cd ParamSpider && pip install -r requirements.txt
+          go install github.com/tomnomnom/waybackurls@latest
+          go install github.com/lc/gau/v2/cmd/gau@latest
 
-      - name: Run ParamSpider
+      - name: Subdomain Enumeration with BBOT
         run: |
-          cd paramspider
-          paramspider -d $DOMAIN
+          bbot -d $TARGET_DOMAIN -o subdomains.txt
 
-      # --- Nuclei (Prebuilt Binary) ---
-      - name: Download Nuclei prebuilt binary
+      - name: Check Alive Subdomains with HTTPX
         run: |
-          mkdir -p ~/tools
-          curl -L https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_3.4.2_linux_amd64.zip -o nuclei.zip
-          unzip nuclei.zip -d ~/tools
-          chmod +x ~/tools/nuclei
+          cat subdomains.txt | httpx -silent -o alive_subdomains.txt
 
-      - name: Update Nuclei templates
+      - name: Crawl Alive Subdomains with Katana
         run: |
-          ~/tools/nuclei -update-templates
+          katana -list alive_subdomains.txt -o endpoints.txt
 
-      - name: Run Nuclei scan
+      - name: Capture Screenshots with EyeWitness
         run: |
-          ~/tools/nuclei -l paramspider/results/${{ env.DOMAIN }}.txt \
-                         -o nuclei_results.txt \
-                         -stats \
-                         -ni
+          cd EyeWitness/Python
+          ./EyeWitness.py --web -f ../../alive_subdomains.txt --threads 5 -d ../../screenshots/
 
-      # --- Artifacts ---
-      - name: Upload ParamSpider output
+      - name: Detect Subdomain Takeovers with Subzy
+        run: |
+          subzy run --targets alive_subdomains.txt > subzy_results.txt
+
+      - name: Discover Parameters with ParamSpider
+        run: |
+          cd ParamSpider
+          python3 paramspider.py -d $TARGET_DOMAIN > ../paramspider_results.txt
+
+      - name: Gather URLs with WaybackURLs and GAU
+        run: |
+          cat alive_subdomains.txt | waybackurls > waybackurls.txt
+          cat alive_subdomains.txt | gau > gau.txt
+          sort -u waybackurls.txt gau.txt > urls.txt
+
+      - name: Upload Reconnaissance Results
         uses: actions/upload-artifact@v4
         with:
-          name: paramspider-output
-          path: paramspider/results/${{ env.DOMAIN }}.txt
-
-      - name: Upload Nuclei scan results
-        uses: actions/upload-artifact@v4
-        with:
-          name: nuclei-results
-          path: nuclei_results.txt
+          name: recon-results
+          path: |
+            subdomains.txt
+            alive_subdomains.txt
+            endpoints.txt
+            screenshots/
+            subzy_results.txt
+            paramspider_results.txt
+            urls.txt
