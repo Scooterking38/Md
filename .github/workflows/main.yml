@@ -1,84 +1,36 @@
-name: Deep Recon
-on: [workflow_dispatch]
+name: Run mainRecon
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Enter the program target (example: hackerone)'
+        required: true
+        default: 'hackerone'
 
 jobs:
-  recon:
+  mainrecon-scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Full Recon Script
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pull and Run mainRecon
         run: |
-          # 1. System deps
-          sudo apt update || echo "apt update failed"
-          sudo apt install -y python3-pip git wget python3-venv xvfb firefox-geckodriver \
-            || echo "apt install failed"
+          docker pull l34r00t/mainrecon
 
-          # 2. pipx + BBOT
-          pip3 install pipx                       || echo "pipx install failed"
-          pipx install bbot                       || echo "bbot install failed"
-
-          # 3. Go tools: httpx, katana, subzy, waybackurls, gau
-          go install github.com/projectdiscovery/httpx/cmd/httpx@latest    || echo "httpx install failed"
-          go install github.com/projectdiscovery/katana/cmd/katana@latest  || echo "katana install failed"
-          go install github.com/PentestPad/subzy@latest                   || echo "subzy install failed"
-          go install github.com/tomnomnom/waybackurls@latest              || echo "waybackurls install failed"
-          go install github.com/lc/gau/v2/cmd/gau@latest                  || echo "gau install failed"
-
-          # 4. Ensure Go binaries in PATH for rest of script
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-          # 5. EyeWitness install from Python/setup
-          git clone https://github.com/FortyNorthSecurity/EyeWitness.git  || echo "EyeWitness clone failed"
-          cd EyeWitness/Python/setup                                       || echo "Missing EyeWitness setup dir"
-          chmod +x setup.sh                                               || echo "EyeWitness chmod failed"
-          sudo ./setup.sh                                                 || echo "EyeWitness install failed"
-          cd ../../../
-
-          # 6. ParamSpider install
-          git clone https://github.com/devanshbatham/ParamSpider.git      || echo "ParamSpider clone failed"
-          cd ParamSpider                                                  || echo "Missing ParamSpider dir"
-          pip3 install .                                                  || echo "ParamSpider install failed"
-          cd ..
-
-          # 7. Subdomain enumeration with BBOT & copy real .txt
-          mkdir -p bbot_output                                             # ensure folder exists
-          bbot -t $TARGET_DOMAIN -o bbot_output                            || echo "BBOT failed"
-          cp bbot_output/*/output.txt subdomains.txt                      || echo "Copy BBOT output failed"
-
-          # 8. HTTP probing on default + custom ports
-          cat subdomains.txt | httpx -silent \
-            -ports http:80,https:443,https:8443 \
-            -o alive_subdomains.txt                                       || echo "httpx failed"
-
-          # 9. Clean screenshots dir to avoid overwrite prompt
-          rm -rf screenshots && mkdir -p screenshots                       || echo "Screenshots cleanup failed"
-
-          # 10. Headless screenshots via Xvfb
-          xvfb-run -a python3 EyeWitness/Python/EyeWitness.py \
-            --web -f alive_subdomains.txt --threads 5 -d screenshots/     || echo "EyeWitness run failed"
-
-          # 11. Subdomain takeover scan
-          subzy run --targets alive_subdomains.txt > subzy_results.txt    || echo "Subzy scan failed"
-
-          # 12. Parameter discovery
-          paramspider -d $TARGET_DOMAIN > paramspider_results.txt         || echo "ParamSpider failed"
-
-          # 13. Gather historical URLs & dedupe
-          cat alive_subdomains.txt | waybackurls > waybackurls.txt        || echo "WaybackURLs failed"
-          cat alive_subdomains.txt | gau > gau.txt                        || echo "gau failed"
-          sort -u waybackurls.txt gau.txt > urls.txt                      || echo "Sorting failed"
-
-      - name: Upload Recon Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: recon-results
-          path: |
-            subdomains.txt
-            alive_subdomains.txt
-            screenshots/
-            subzy_results.txt
-            paramspider_results.txt
-            urls.txt
+          docker run --rm -it \
+            --env chat_ID="${{ secrets.CHAT_ID }}" \
+            --env token="${{ secrets.BOT_TOKEN }}" \
+            --env findomain_fb_token="${{ secrets.FB_TOKEN }}" \
+            --env findomain_spyse_token="${{ secrets.SPYSE_TOKEN }}" \
+            --env findomain_virustotal="${{ secrets.VIRUSTOTAL_TOKEN }}" \
+            --env findomain_securitytrails_token="${{ secrets.SECURITYTRAILS_TOKEN }}" \
+            -v ${{ github.workspace }}/targets:/mainData \
+            --name mainrecon \
+            l34r00t/mainrecon \
+            -p ${{ github.event.inputs.target }} -f targets.txt
