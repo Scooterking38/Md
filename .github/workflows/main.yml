@@ -93,7 +93,7 @@ jobs:
         grep -r "dashboard" * > dashboard_endpoints.txt
 
     - name: Upload Results as Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: recon-results
         path: |
