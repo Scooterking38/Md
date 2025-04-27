@@ -1,10 +1,10 @@
-name: ParamSpider Run
+name: Subdomain ParamSpider Scan
 
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Domain to scan'
+        description: 'Root domain (e.g., example)'
         required: true
         type: string
 
@@ -12,16 +12,30 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Clone ParamSpider
-        run: git clone https://github.com/devanshbatham/paramspider.git
+      - name: Setup
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python-dnspython
+      - name: Clone Tools
+        run: |
+          git clone https://github.com/TheRook/subbrute
+          git clone https://github.com/devanshbatham/paramspider
+      - name: Find Subdomains
+        run: |
+          cd subbrute
+          chmod +x subbrute.py
+          ./subbrute.py ${{ github.event.inputs.domain }}.com > ../subdomains.txt
       - name: Install ParamSpider
         run: |
           cd paramspider
           pip install .
-      - name: Run ParamSpider
+      - name: Run ParamSpider on Subdomains
         run: |
           cd paramspider
-          paramspider -d ${{ github.event.inputs.domain }}
-      - name: Show Results
+          mkdir -p results
+          while read sub; do
+            paramspider -d "$sub"
+          done < ../subdomains.txt
+      - name: Show All Results
         run: |
-          cat paramspider/results/${{ github.event.inputs.domain }}.txt
+          cat paramspider/results/*.txt
