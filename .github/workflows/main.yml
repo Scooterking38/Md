@@ -1,58 +1,109 @@
-name: Run ReconFTW (cached)
+name: Recon Automation
 
 on:
   workflow_dispatch:
     inputs:
-      target:
-        description: 'Domain to scan (example: hackerone.com)'
+      domain:
+        description: 'Enter the domain to scan'
         required: true
-        default: 'hackerone.com'
+        default: 'example.com'
 
 jobs:
-  reconftw-scan:
+  recon:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout your repo
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v2
 
-      - name: Install Golang
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
+    - name: Set up Go (for gowitness)
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.17'
 
-      - name: Cache ReconFTW Tools
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/go
-            ~/tools
-            ~/.local/bin
-          key: ${{ runner.os }}-reconftw-${{ hashFiles('reconftw/install.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-reconftw-
+    - name: Install Dependencies
+      run: |
+        # Install assetfinder
+        wget https://github.com/assetfinder/assetfinder/releases/download/v1.1.1/assetfinder-linux-amd64 -O /usr/local/bin/assetfinder
+        chmod +x /usr/local/bin/assetfinder
+        
+        # Install Subfinder
+        wget https://github.com/projectdiscovery/subfinder/releases/download/v2.5.6/subfinder-linux-amd64 -O /usr/local/bin/subfinder
+        chmod +x /usr/local/bin/subfinder
+        
+        # Install Amass
+        wget https://github.com/OWASP/Amass/releases/download/v3.14.4/amass-linux-amd64-v3.14.4.zip
+        unzip amass-linux-amd64-v3.14.4.zip -d amass
+        chmod +x amass/amass
+        mv amass/amass /usr/local/bin/
 
-      - name: Install Dependencies
-        run: sudo apt-get update && sudo apt-get install -y git curl unzip jq
+        # Install Gowitness
+        wget https://github.com/sensepost/gowitness/releases/download/v2.0.0/gowitness-linux-amd64 -O /usr/local/bin/gowitness
+        chmod +x /usr/local/bin/gowitness
+        
+        # Install getJS
+        git clone https://github.com/Delevir/getJS.git
+        cd getJS
+        pip3 install -r requirements.txt
+        cd ..
 
-      - name: Clone reconftw
-        run: |
-          git clone https://github.com/six2dez/reconftw.git
-          cd reconftw
-          chmod +x install.sh reconftw.sh
+        # Install LinkFinder
+        git clone https://github.com/GerbenJavado/LinkFinder.git
+        cd LinkFinder
+        pip3 install -r requirements.txt
+        cd ..
 
-      - name: Install ReconFTW Tools (if not cached)
-        run: |
-          cd reconftw
-          ./install.sh
+    - name: Run Subdomain Enumeration with Assetfinder
+      run: |
+        DOMAIN="${{ github.event.inputs.domain }}"  # Get the domain input from the workflow dispatch
+        assetfinder --subs-only $DOMAIN > assetfinder_subdomains.txt
 
-      - name: Run ReconFTW
-        run: |
-          cd reconftw
-          ./reconftw.sh -d ${{ github.event.inputs.target }} -r
+    - name: Run Subdomain Enumeration with Subfinder
+      run: |
+        DOMAIN="${{ github.event.inputs.domain }}"  # Get the domain input from the workflow dispatch
+        subfinder -d $DOMAIN -o subfinder_subdomains.txt
 
-      - name: Upload Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: reconftw-results
-          path: reconftw/results/
+    - name: Run Subdomain Enumeration with Amass
+      run: |
+        DOMAIN="${{ github.event.inputs.domain }}"  # Get the domain input from the workflow dispatch
+        amass enum -d $DOMAIN -o amass_subdomains.txt
+
+    - name: Take Screenshots of Targets Using Gowitness
+      run: |
+        DOMAIN="${{ github.event.inputs.domain }}"  # Get the domain input from the workflow dispatch
+        gowitness batch --urls subfinder_subdomains.txt --destination screenshots/
+
+    - name: Scrape JS Files with getJS
+      run: |
+        DOMAIN="${{ github.event.inputs.domain }}"  # Get the domain input from the workflow dispatch
+        while IFS= read -r subdomain; do
+          getjs "$subdomain" --output "js_files/$subdomain"
+        done < subfinder_subdomains.txt
+
+    - name: Use LinkFinder on JS Files
+      run: |
+        DOMAIN="${{ github.event.inputs.domain }}"  # Get the domain input from the workflow dispatch
+        for file in js_files/*; do
+          python3 LinkFinder/linkfinder.py -i "$file" -o "linkfinder_output/$(basename "$file").txt"
+        done
+
+    - name: Search for Endpoints Using Grep
+      run: |
+        grep -r "admin" * > admin_endpoints.txt
+        grep -r "login" * > login_endpoints.txt
+        grep -r "dashboard" * > dashboard_endpoints.txt
+
+    - name: Upload Results as Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: recon-results
+        path: |
+          assetfinder_subdomains.txt
+          subfinder_subdomains.txt
+          amass_subdomains.txt
+          screenshots/
+          js_files/
+          linkfinder_output/
+          admin_endpoints.txt
+          login_endpoints.txt
+          dashboard_endpoints.txt
