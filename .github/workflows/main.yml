@@ -16,17 +16,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Install dnspython
-        run: pip install dnspython
-      - name: Clone Tools
+      - name: Install Tools
         run: |
-          git clone https://github.com/TheRook/subbrute
+          pip install dnspython
+          sudo apt-get update
+          sudo apt-get install -y amass
+      - name: Find Subdomains with Amass
+        run: |
+          amass enum -d ${{ github.event.inputs.domain }}.com -o subdomains.txt
+      - name: Clone ParamSpider
+        run: |
           git clone https://github.com/devanshbatham/paramspider
-      - name: Find Subdomains
-        run: |
-          cd subbrute
-          chmod +x subbrute.py
-          ./subbrute.py ${{ github.event.inputs.domain }}.com > ../subdomains.txt
       - name: Install ParamSpider
         run: |
           cd paramspider
