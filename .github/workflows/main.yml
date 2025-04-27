@@ -16,11 +16,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Install Tools
+      - name: Install dnspython
+        run: pip install dnspython
+      - name: Download and Setup Amass
         run: |
-          pip install dnspython
-          sudo apt-get update
-          sudo apt-get install -y amass
+          wget https://github.com/owasp-amass/amass/releases/download/v4.2.0/amass_Linux_amd64.zip
+          unzip amass_Linux_amd64.zip
+          sudo mv amass_Linux_amd64/amass /usr/local/bin/amass
+          amass -version
       - name: Find Subdomains with Amass
         run: |
           amass enum -d ${{ github.event.inputs.domain }}.com -o subdomains.txt
