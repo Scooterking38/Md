@@ -1,103 +1,27 @@
-name: Recon Automation
+name: ParamSpider Run
 
 on:
   workflow_dispatch:
     inputs:
       domain:
-        description: 'Enter the domain to scan'
+        description: 'Domain to scan'
         required: true
-        default: 'example.com'
+        type: string
 
 jobs:
-  recon:
+  run:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v2
-
-    - name: Set up Go (for gowitness and assetfinder)
-      uses: actions/setup-go@v2
-      with:
-        go-version: '1.17'
-
-    - name: Install Dependencies
-      run: |
-        # Install assetfinder using Go
-        go install github.com/tomnomnom/assetfinder@latest
-        
-        # Install Subfinder using Go
-        go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-        
-        # Install Amass using Go
-        go install github.com/owasp-amass/amass/v4/...@latest
-        
-        # Install Gowitness using Go
-        go install github.com/sensepost/gowitness@latest
-        
-        # Install getJS
-        git clone https://github.com/003random/getJS.git
-        cd getJS
-        pip3 install -r requirements.txt
-        cd ..
-
-        # Install LinkFinder
-        git clone https://github.com/GerbenJavado/LinkFinder.git
-        cd LinkFinder
-        pip3 install -r requirements.txt
-        cd ..
-
-    - name: Run Subdomain Enumeration with Assetfinder
-      run: |
-        DOMAIN="${{ github.event.inputs.domain }}"
-        assetfinder --subs-only $DOMAIN > assetfinder_subdomains.txt
-
-    - name: Run Subdomain Enumeration with Subfinder
-      run: |
-        DOMAIN="${{ github.event.inputs.domain }}"
-        subfinder -d $DOMAIN -o subfinder_subdomains.txt
-
-    - name: Run Subdomain Enumeration with Amass
-      run: |
-        DOMAIN="${{ github.event.inputs.domain }}"
-        amass enum -d $DOMAIN -o amass_subdomains.txt
-
-    - name: Take Screenshots of Targets Using Gowitness
-      run: |
-        DOMAIN="${{ github.event.inputs.domain }}"
-        gowitness batch --urls subfinder_subdomains.txt --destination screenshots/
-
-    - name: Scrape JS Files with getJS
-      run: |
-        DOMAIN="${{ github.event.inputs.domain }}"
-        while IFS= read -r subdomain; do
-          getjs "$subdomain" --output "js_files/$subdomain"
-        done < subfinder_subdomains.txt
-
-    - name: Use LinkFinder on JS Files
-      run: |
-        DOMAIN="${{ github.event.inputs.domain }}"
-        for file in js_files/*; do
-          python3 LinkFinder/linkfinder.py -i "$file" -o "linkfinder_output/$(basename "$file").txt"
-        done
-
-    - name: Search for Endpoints Using Grep
-      run: |
-        grep -r "admin" * > admin_endpoints.txt
-        grep -r "login" * > login_endpoints.txt
-        grep -r "dashboard" * > dashboard_endpoints.txt
-
-    - name: Upload Results as Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: recon-results
-        path: |
-          assetfinder_subdomains.txt
-          subfinder_subdomains.txt
-          amass_subdomains.txt
-          screenshots/
-          js_files/
-          linkfinder_output/
-          admin_endpoints.txt
-          login_endpoints.txt
-          dashboard_endpoints.txt
+      - name: Clone ParamSpider
+        run: git clone https://github.com/devanshbatham/paramspider.git
+      - name: Install ParamSpider
+        run: |
+          cd paramspider
+          pip install .
+      - name: Run ParamSpider
+        run: |
+          cd paramspider
+          paramspider -d ${{ github.event.inputs.domain }}
+      - name: Show Results
+        run: |
+          cat paramspider/results/${{ github.event.inputs.domain }}.txt
